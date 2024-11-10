@@ -1,16 +1,12 @@
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '3.3.2'
-	id 'io.spring.dependency-management' version '1.1.6'
+	id "java"
+	id "org.springframework.boot" version "3.3.4"
+	id "io.spring.dependency-management" version "1.1.6"
 }
 
-group = 'jj.stella'
-version = '0.0.1-SNAPSHOT'
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(17)
-	}
+sourceCompatibility = "17"
+repositories {
+	mavenCentral()
 }
 
 repositories {
@@ -18,11 +14,67 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	
+	implementation "org.springframework.boot:spring-boot-starter-web"
+	implementation "org.springframework.boot:spring-boot-starter-tomcat"
+	/** Spring Security */
+	implementation "org.springframework.boot:spring-boot-starter-security"
+	/** HTML */
+	implementation "org.springframework.boot:spring-boot-starter-thymeleaf"
+	/** MyBatis */
+	implementation "org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3"
+	
+	/** Redis */
+	implementation "org.springframework.boot:spring-boot-starter-data-redis"
+	/** @SchedulerLock + Redis */
+	/** @Scheduled 설정할 때 중복실행 되는 이슈해결 ( Linux CentOS 7 ) */
+	implementation "net.javacrumbs.shedlock:shedlock-spring:5.13.0"
+	implementation "net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.13.0"
+	
+	/** AWS */
+	implementation "software.amazon.awssdk:secretsmanager:2.29.8"
+	
+	/** JWT */
+	implementation "io.jsonwebtoken:jjwt-api:0.12.5"
+	implementation "io.jsonwebtoken:jjwt-impl:0.12.5"
+	implementation "io.jsonwebtoken:jjwt-jackson:0.12.5"
+	implementation "com.nimbusds:nimbus-jose-jwt:9.39.1"
+	
+	implementation "org.apache.commons:commons-pool2:2.12.0"
+	implementation "org.aspectj:aspectjrt:1.9.22.1"
+	implementation "org.apache.tomcat:tomcat-jdbc"
+	implementation "org.apache.commons:commons-lang3"
+	implementation "org.apache.tomcat.embed:tomcat-embed-jasper"
+	implementation "jakarta.inject:jakarta.inject-api:2.0.1"
+	implementation "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"
+	implementation "jakarta.annotation:jakarta.annotation-api:3.0.0"
+	
+	/** 쿼리문 로그 */
+	implementation "org.bgee.log4jdbc-log4j2:log4jdbc-log4j2-jdbc4.1:1.16"
+	
+	/** log4j */
+	implementation "org.apache.logging.log4j:log4j-core"
+	implementation "org.apache.logging.log4j:log4j-api"
+	implementation "org.apache.logging.log4j:log4j-to-slf4j"
+	
+	implementation "com.fasterxml.jackson.core:jackson-core"
+	implementation "com.fasterxml.jackson.core:jackson-databind"
+	implementation "com.fasterxml.jackson.core:jackson-annotations"
+	implementation "com.fasterxml.jackson.datatype:jackson-datatype-jdk8"
+	implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310"
+	implementation "com.fasterxml.jackson.module:jackson-module-parameter-names"
+	
+	/** MySQL Connector */
+	implementation "com.mysql:mysql-connector-j:8.4.0"
+	
+	/** Lombok */
+	compileOnly "org.projectlombok:lombok"
+	annotationProcessor "org.projectlombok:lombok"
+	
+	testImplementation "org.springframework.boot:spring-boot-starter-test"
+	
 }
 
-tasks.named('test') {
+tasks.named("test") {
 	useJUnitPlatform()
 }

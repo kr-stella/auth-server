@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="jj.stella.repository.dao">
+	
+	<!-- 토큰검증 요청에 대한 ( 검증OK 라면 ) -->
+	<!-- 사용자 그룹 반환 -->
+	<select id="getGroup" parameterType="String" resultType="String">
+		SELECT g.str
+		FROM user AS u INNER JOIN `group` AS g ON u.groupIdx = g.idx
+		WHERE u.originId = #{id}
+	</select>
+	<!-- 권한 리스트 반환 -->
+	<select id="getRoles" parameterType="String" resultType="jj.stella.entity.vo.RoleVo">
+		SELECT a.idx AS ino, a.str
+		FROM user AS u INNER JOIN group_authority_group AS gag ON u.groupIdx = gag.groupIdx
+			INNER JOIN authority_group AS ag ON gag.authGroupIdx = ag.idx
+			INNER JOIN authority_group_authority AS aga ON ag.idx = aga.authGroupIdx
+			INNER JOIN authority AS a ON aga.authIdx = a.idx
+			<!-- deny인 경우 -->
+			LEFT JOIN authority_group_override AS ago ON u.idx = ago.userIdx AND ag.idx = ago.authGroupIdx AND ago.status = "deny"
+			<!-- deny인 경우 -->
+			LEFT JOIN authority_override AS ao ON u.idx = ao.userIdx AND a.idx = ao.authIdx AND ao.status = "deny"
+		WHERE u.originId = #{id}
+			<!-- 이 권한 그룹이 명시적으로 거부된 경우를 제외 -->
+			AND ago.userIdx IS NULL
+			<!-- 이 권한이 명시적으로 거부된 경우를 제외 -->
+			AND ao.userIdx IS NULL
+		
+		UNION ALL
+		
+		<!-- 사용자에게 명시적으로 허용된 권한 그룹을 통해 부여받은 권한 조회. 명시적으로 거부된 권한은 제외. -->
+		SELECT a.idx AS ino, a.str
+		FROM user AS u INNER JOIN authority_group_override AS ago ON u.idx = ago.userIdx AND ago.status = "allow"
+			INNER JOIN authority_group AS ag ON ago.authGroupIdx = ag.idx
+			INNER JOIN authority_group_authority AS aga ON ag.idx = aga.authGroupIdx
+			INNER JOIN authority AS a ON aga.authIdx = a.idx
+			LEFT JOIN authority_override AS ao ON u.idx = ao.userIdx AND a.idx = ao.authIdx AND ao.status = "deny"
+		WHERE u.originId = #{id}
+			<!-- 이 권한이 명시적으로 거부된 경우를 제외 -->
+			AND ao.userIdx IS NULL
+		
+		UNION ALL
+		
+		<!-- 사용자에게 명시적으로 허용된 개별 권한 조회. -->
+		SELECT a.idx AS ino, a.str
+		FROM user AS u INNER JOIN authority_override AS ao ON u.idx = ao.userIdx AND ao.status = "allow"
+			INNER JOIN authority AS a ON ao.authIdx = a.idx
+		WHERE u.originId = #{id}
+	</select>
+	<!-- 사용자 권한 그룹 리스트 반환 -->
+	<select id="getRoleGroups" parameterType="String" resultType="jj.stella.entity.vo.GroupVo">
+		SELECT ag.idx AS ino, ag.str
+		FROM user AS u INNER JOIN group_authority_group AS gag ON u.groupIdx = gag.groupIdx
+			INNER JOIN authority_group AS ag ON gag.authGroupIdx = ag.idx
+			LEFT JOIN authority_group_override AS ago ON u.idx = ago.userIdx AND ag.idx = ago.authGroupIdx AND ago.status = "deny"
+		WHERE u.originId = #{id}
+			AND ago.userIdx IS NULL
+		
+		UNION ALL
+		
+		SELECT ag.idx AS ino, ag.str
+		FROM user AS u INNER JOIN authority_group_override AS ago ON u.idx = ago.userIdx AND ago.status = "allow"
+			INNER JOIN authority_group AS ag ON ago.authGroupIdx = ag.idx
+		WHERE u.originId = #{id}
+	</select>
+	
+	<!-- Refresh Token 존재여부 확인 -->
+	<select id="getRefreshToken" parameterType="jj.stella.entity.dto.ReissueDto" resultType="jj.stella.entity.vo.RefreshTokenVo">
+		SELECT id, device, token
+		FROM remember_me
+		WHERE id = #{id}
+			AND device = #{device}
+	</select>
+	
+</mapper>
