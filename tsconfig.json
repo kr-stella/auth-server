@@ -1,0 +1,30 @@
+{
+	"compilerOptions": {
+		"jsx": "preserve",
+		"lib": ["DOM", "DOM.Iterable", "ESNext"],
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "Node",
+		"outDir": "src/main/resources/static/built",
+		"allowJs": true,
+		"skipLibCheck": true,
+		"strict": false,
+		"noEmit": true,
+		"incremental": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"preserveSymlinks": true,
+		"sourceMap": true,
+		"noResolve": false,
+		"strictNullChecks": true,
+		"allowUnreachableCode": false,
+		"noImplicitAny": false,
+		"removeComments": true,
+		"forceConsistentCasingInFileNames": true,
+		"allowSyntheticDefaultImports": true,
+		"downlevelIteration": true
+	},
+	"include": [ "**/*.ts", "**/*.tsx" ],
+	"exclude": [ "node_modules", "build", "bin" ]
+}

@@ -7,8 +7,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.http.HttpEntity;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -35,6 +35,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jj.stella.entity.dto.DecryptDto;
 import jj.stella.entity.dto.ReissueDto;
 import jj.stella.entity.vo.RefreshTokenVo;
+import jj.stella.repository.dao.MainDao;
 
 public class JwtAuthentication extends OncePerRequestFilter {
 	
@@ -364,7 +365,7 @@ public class JwtAuthentication extends OncePerRequestFilter {
 		 * 만약 권한에 변경이 있다면 "@CacheEvict" 혹은 RedisTemplate 혹은 커스텀 AOP를 활용해서
 		 * 사용자::authz를 제거해야 함. 
 		 * */
-		map.put("authz", mainDao.getUserAuthz(dto.getId()));
+		map.put("authz", mainDao.getAuthorization(dto.getId()));
 		
 		ObjectMapper mapper = new ObjectMapper();
 		String result = mapper.writeValueAsString(map);

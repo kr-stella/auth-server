@@ -6,14 +6,17 @@ build/
 !**/src/test/**/build/
 
 ### STS ###
-.apt_generated
 .classpath
-.factorypath
 .project
 .settings
+.apt_generated
+.factorypath
 .springBeans
 .sts4-cache
-bin/
+src/main/resources/static/built/
+src/main/resources/templates/index.html
+
+bin
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
@@ -34,4 +37,7 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
-.vscode/
+.vscode
+node_modules
+resources
+!src/main/resources/

@@ -28,6 +28,7 @@ import jj.stella.filter.auth.JwtAuthentication;
 import jj.stella.filter.csrf.CsrfHandler;
 import jj.stella.filter.csrf.CsrfRepository;
 import jj.stella.properties.AuthProperties;
+import jj.stella.repository.dao.MainDao;
 
 @Configuration
 @EnableWebSecurity
@@ -100,7 +101,7 @@ public class SecurityConfig {
 				REFRESH_SERVER, mainDao, redisTemplate
 			), UsernamePasswordAuthenticationFilter.class)
 			.build();
-	}
+	};
 	
 	// 비밀번호 암호화 ( 단방향 복호화 불가능 )
 	@Bean
@@ -109,15 +110,15 @@ public class SecurityConfig {
 		PasswordEncoder encoder = new BCryptPasswordEncoder();
 		return encoder;
 		
-	}
+	};
 	
 	// CORS 정책 수립
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		
 		CorsConfiguration corsConfig = new CorsConfiguration();
-		corsConfig.addAllowedOriginPattern("*://*.dev.captivision.co.kr");
-		corsConfig.addAllowedOriginPattern("*://*.intra.captivision.co.kr");
+		corsConfig.addAllowedOriginPattern("*://*.dev.st2lla.co.kr");
+		corsConfig.addAllowedOriginPattern("*://*.intra.st2lla.co.kr");
 		corsConfig.setAllowCredentials(true);
 		corsConfig.setMaxAge(3600L);
 		corsConfig.setAllowedMethods(Arrays.asList("GET"));
@@ -138,7 +139,7 @@ public class SecurityConfig {
 		
 		return source;
 		
-	}
+	};
 	
 	// 서명과 토큰의 복호화를 위한 Key 설정
 	private Key decryptSignKey(String key) {
@@ -149,18 +150,18 @@ public class SecurityConfig {
 		// 바이트 배열을 사용하여 SecretKey 객체 생성
 		return new SecretKeySpec(decodedKey, 0, decodedKey.length, "HmacSHA256");
 		
-	}
+	};
 	private Key decryptTokenKey(String key) {
 		
 		byte[] decodedKey = Base64.getDecoder().decode(key);
 		return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
 		
-	}
+	};
 	
 	private RequestMatcher[] getRequestMatchers(String... str) {
 		return Arrays.stream(str)
 			.map(AntPathRequestMatcher::new)
 			.toArray(RequestMatcher[]::new);
-	}
+	};
 	
 }
