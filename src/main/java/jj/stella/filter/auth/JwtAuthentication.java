@@ -79,67 +79,128 @@ public class JwtAuthentication extends OncePerRequestFilter {
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 		throws ServletException, IOException {
 		
-		/** 검증서버에 접근했을 때 검증로직을 건너뛰는 경로 */
+		/** 1. 검증서버에 접근했을 때 검증로직을 건너뛰는 경로 */
 		String path = request.getRequestURI();
 		if(isSkipPath(path)) {
 			chain.doFilter(request, response);
 			return;
-		}
+		};
 		
 		/**
-		 * Request Header로 들어온 요청에 대해서만
-		 * 단순 Token 문자열 추출
-		 * ( 검증서버는 Cookie 사용하지 않음. )
+		 * 2. 검증로직을 건너뛰는 경로가 아닌 경우 토큰을 추출함
+		 * - 토큰을 추출해서 값이 있다면 해당 토큰으로 검증로직을 결과를 반환
+		 * - 검증서버에서는 Cookie에 저장된 토큰을 사용하지 않고,
+		 *   다른 MSA 서버에서 내가 정한 규칙대로 요청한 경우 토큰을 추출해서 활용함
+		 *   요청 헤더 key : Authorization
+		 *   요청 값 : Bearer ..... Token .....
 		 * */
 		String token = extractToken(request);
 		
 		/**
-		 * 토큰이 없으면 그 즉시 비정상 접근으로 판단.
-		 * 401 Error + 더 이상 로직을 진행하지 않음.
-		 * "/validate", "/jti"를 인증서버 자체에서 직접 접근했을 때
-		 * 요청 헤더에 없으므로 즉시 중단.
+		 * 3. 토큰이 없다면 그 즉시 비정상 접근으로 판단
+		 * 401에러 반환 + 더 이상 로직을 진행하지 않음
+		 * - 검증서버에서 "/validate", "/jti"에 직접 접근해도
+		 *   요청 헤더가 없기 때문에 즉시 중단
 		 * */
 		if(token == null) {
 			response.sendError(HttpServletResponse.SC_UNAUTHORIZED, NONE_TOKEN_ERROR_MESSAGE);
 			return;
-		}
+		};
 		
-		/** Authentication Token 복호화 */
+		/**
+		 * 4. 토큰이 있다면 복호화 진행
+		 * - 일반 JWT Token이 아니라 JWT Token을 암호화 한 JWE로 관리하기 때문에
+		 *  > decryptToken( 추출한 재발급 토큰, 인증 토큰유무 _ 인증 토큰인지, 재발급 토큰인지 구분자: true: 인증 토큰 / false: 재발급 토큰 )
+		 * */
 		DecryptDto decryptAuthToken = decryptToken(token, true);
 		decryptAuthToken.setToken(token);
 		
-		/** 검증요청이 들어오게 되면 실행되는 로직 */
+		/** 5-1. 토큰이 있고, 검증 요청경로( /validate )인 경우 검증 후 결과 반환 */
 		if(VALIDATE_URL.equals(path))
 			handleValidate(request, response, decryptAuthToken);
 		
-		/** JTI 정보 요청이 들어오게 되면 실행되는 로직 - 로그아웃 */
+		/**
+		 * 5-2. JTI 요청경로( /jti )인 경우는
+		 * 다른 MSA 서버에 비정상 접근이 감지됐거나, 로그아웃 요청이 들어온 경우
+		 * - 이 정보를 토대로 DB에 저장된 remember me를 지우거나, Redis에 저장된 인증정보를 지움
+		 * */
 		if(JTI_URL.equals(path))
 			handleJti(response, decryptAuthToken.getJti());
 		
-	}
+	};
 	
 	/** 검증서버에 접근했을 때 검증로직을 건너뛰는 경로 */
 	private boolean isSkipPath(String path) {
 		return "/".equals(path)
 			|| pathMatcher.match("/resources/**", path)
 			|| pathMatcher.match("/favicon.ico", path);
-	}
+	};
 	
 	/**
-	 * Request Header에서 토큰 추출
-	 * Cookie에서 추출하지 않는 이유는
-	 * 각 서버에서 RestTemplate 등 Request Header로 들어오는 것만
-	 * 정상접근으로 판단해서 허용하기 위함.
-	 */
+	 * 요청 헤더에서 토큰 추출
+	 * - 검증서버에서는 Cookie에 저장된 토큰을 사용하지 않고,
+	 *   다른 MSA 서버에서 RestTemplate 등 요청 헤더에 설정한 값( 내가 정한 규칙 )으로
+	 *   토큰을 추출해서 활용함
+	 * */
 	private String extractToken(HttpServletRequest request) {
 		
+		/** 요청 헤더에 Authorization이( JWT_HEADER ) 있는지 확인 */
 		String token = request.getHeader(JWT_HEADER);
+		/**
+		 * 요청 헤더에 Authorization가 있고( 토큰이 있고 )
+		 * Bearer( JWT_KEY )로 시작하는 경우
+		 * */
 		if(token != null && token.startsWith(JWT_KEY))
 			return token.substring(JWT_KEY.length());
 		
+		/** 위 경우가 아니라면 비정상 접근으로 판단하고 null 반환 */
 		return null;
 		
-	}
+	};
+	
+	/** 토큰 복호화 후 필요한 정보 반환 */
+	private DecryptDto decryptToken(String token, boolean isAuth) {
+		
+		DecryptDto decrypt = new DecryptDto();
+		try {
+			
+			DirectDecrypter decrypter = new DirectDecrypter((isAuth? JWT_DECRYPT_TOKEN:JWT_DECRYPT_REFRESH_TOKEN).getEncoded());
+			
+			/** JWE 복호화 */
+			JWEObject jweObject = JWEObject.parse(token);
+			jweObject.decrypt(decrypter);
+			
+			/** 복호화 된 JWE에서 토큰 추출 및 파싱 */
+			SignedJWT signedJWT = jweObject.getPayload().toSignedJWT();
+			
+			/** 서명 검증 */
+			JWSVerifier verifier = new MACVerifier((isAuth? JWT_DECRYPT_SIGN:JWT_DECRYPT_REFRESH_SIGN).getEncoded());
+			/** 서명 검증결과 >>> true = 검증O / false = 검증X */
+			decrypt.setSign(signedJWT.verify(verifier));
+			
+			/** JWT Claims */
+			JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+			/** 토큰에서 만료일 추출 */
+			decrypt.setExpired(claims.getExpirationTime());
+			/** 토큰에서 사용자 ID 추출 */
+			decrypt.setId(claims.getSubject());
+			/** 토큰에서 첫 로그인을 시도했던 사용자의 IP 추출 */
+			decrypt.setIp(claims.getClaim("ip").toString());
+			/** 토큰에서 첫 로그인을 시도했던 사용자의 Agent 추출 */
+			decrypt.setAgent(claims.getClaim("agent").toString());
+			/** 토큰에서 사용자의 기기 식별번호 추출 ( id::uuid 형식 ) */
+			String jti = claims.getJWTID();
+			decrypt.setJti(jti);
+			decrypt.setDevice(jti.split("::")[1]);
+			
+		} catch(ParseException | JOSEException e) {
+			e.printStackTrace();
+			decrypt = new DecryptDto();
+		}
+		
+		return decrypt;
+		
+	};
 	
 	/** 검증 요청에 대한 반환 */
 	private void handleValidate(HttpServletRequest request, HttpServletResponse response, DecryptDto authToken) throws IOException {
@@ -150,33 +211,44 @@ public class JwtAuthentication extends OncePerRequestFilter {
 //		System.out.println("jti =====> " + jti);
 //		System.out.println("id =====> " + id);
 //		System.out.println("redisTemplate.hasKey(jti) =====> " + redisTemplate.hasKey(jti));
-		/** #2-1. Redis에 유효한 JTI가 있다면 검증로직 실행 */
+		
+		/** 5-1-1. Redis에 유효한 JTI가 있다면( = 정상적으로 로그인 한 사용자라면 ) 검증로직 실행 */
 		if(redisTemplate.hasKey(jti)) {
 			
-			/** #3-1. 검증결과 토큰이 유효하다면 */
+			/** 반환되는 서버에 재발급된 토큰이 아니라고 알려줌 */ 
 			authToken.setReissue(false);
+			
+			/**
+			 * 5-1-1-1. 토큰의 서명이 참이고, 검증결과 토큰이 유효하다면 성공 반환
+			 * - 검증을 요청한 서버( 반환받는 서버 )에서 Cookie 만료시간과 Redis 만료시간을 갱신함
+			 * */
 			if(authToken.isSign() && validateToken(request, authToken))
 				successResponse(response, authToken);
-			/** #3-2. 검증결과 토큰이 유효하지 않다면 "유효하지 않은 토큰" 반환 */
+			
+			/**
+			 * 5-1-1-2. 위 경우가 아니라면 "유효하지 않은 토큰" 반환
+			 * - 유효하지 않음 반환 > 검증을 요청한 서버( 반환받는 서버 )에서 해당 결과를 받음 > 사용자에게 보여줌 > 로그아웃
+			 * */
 			else unauthorizedResponse(response, INVALID_AUTH_TOKEN_MESSAGE);
 			
 		}
 		
 		/**
-		 * #2-2. Redis에 유효한 JTI가 없다면
-		 * - Remember Me DB에서 Refresh Token 존재여부 확인 및 검증
-		 * - 없으면 토큰 만료 결과 반환
-		 * - 있으면 Refresh Token 유효성 검사 후 인증토큰 재발행( 로그인 서버 )
-		 *   > 재발행 후 인증토큰 유효성 검사 후 반환
+		 * 5-1-2. Redis에 유효한 JTI가 없다면( = 로그인 허용 시간이 만료됐다면 )
+		 * - 로그인 할 때 Remember Me를 선택했는지 확인 ( Remember Me DB 확인 )
+		 *  > remember me 테이블에 재발급 토큰 존재여부 확인 및 검증
+		 *  > 있다면( 자동로그인 유저라면 ) 재발급 토큰 유효성 검사 후 인증토큰 재발행 ( 로그인 서버에서 발급함 )
+		 *  > 없다면( 일반 로그인 유저라면 ) 토큰 만료 결과 반환
 		 * */
-		else {
-			/** 토큰 재발급 로직 - Remember Me DB에 Refresh Token 존재여부 확인 후 재발급 */
-			handleReissue(request, response, id, jti.split("::")[1]);
-		}
+		else handleReissue(request, response, id, jti.split("::")[1]);
 		
-	}
+	};
 	
-	/** JTI 정보 요청에 대한 반환 */
+	/**
+	 * JTI 정보 요청에 대한 반환
+	 * - 다른 MSA 서버에 비정상 접근이 감지됐거나, 로그아웃 요청이 들어온 경우
+	 *  > 이 정보를 토대로 DB에 저장된 remember me를 지우거나, Redis에 저장된 인증정보를 지움
+	 * */
 	private void handleJti(HttpServletResponse response, String jti) throws IOException {
 		
 		response.setStatus(HttpServletResponse.SC_OK);
@@ -187,73 +259,122 @@ public class JwtAuthentication extends OncePerRequestFilter {
 		
 		return;
 		
-	}
+	};
+	
+	/** 토큰 검증 로직 */
+	private boolean validateToken(HttpServletRequest request, DecryptDto dto) {
+		
+		Date expired = dto.getExpired();
+		String agent = dto.getAgent();
+		
+		/**
+		 * 유효하다의 조건( 아래 조건을 모두 만족해야 함 )
+		 * (1) 만료일이 현재시간보다 이후인 경우
+		 * (2) User-Agent가 특정 조건에 맞아야 함 ( 상세 조건 구현x )
+		 *  > User-Agent가 모바일인 경우에는 Device 혹은 Ip가 일치해야 함.
+		 *  > User-Agent가 모바일이 아닌경우에는 Device와 Ip가 일치해야 함.
+		 */
+		String reqAgent = request.getHeader("User-Agent");
+		
+		/** 시간차 오차범위 Redis와 Server */
+		long diff = (new Date().getTime() - expired.getTime()) / 1000;
+		if(expired.before(new Date())) {
+			
+			if(diff <= 30)
+				return true;
+			
+			return false;
+			
+		};
+		
+		return reqAgent.equals(agent);
+		
+	};
 	
 	/**
-	 * #3. Remember Me DB에 Refresh Token 존재여부 확인 후 재발급
-	 * - Redis에 유효한 JTI가 없다면 토큰 재발급 로직 실행
+	 * 5-1-2. 로그인 할 때 Remember Me를 선택했는지 확인 ( Remember Me DB 확인 )
+	 *  > remember me 테이블에 재발급 토큰 존재여부 확인 및 검증
+	 *  > 있다면( 자동로그인 유저라면 ) 재발급 토큰 유효성 검사 후 인증토큰 재발행 ( 로그인 서버에서 발급함 )
+	 *  > 없다면( 일반 로그인 유저라면 ) 토큰 만료 결과 반환
 	 * */
 	private void handleReissue(HttpServletRequest request, HttpServletResponse response, String id, String device) throws IOException {
 		
-		/** Remember Me DB에서 Refresh Token 존재여부 확인을 위한 데이터 설정 */
+		/** Remember Me DB에서 재발급 토큰 존재여부 확인을 위한 데이터 설정 */
 		ReissueDto dto = new ReissueDto();
 		dto.setId(id);
 		dto.setDevice(device);
 		
-		/** Refresh Token 존재여부 확인 */
+		/** 재발급 토큰 존재여부 확인 */
 		RefreshTokenVo refreshToken = mainDao.getRefreshToken(dto);
 		
-		/** #3-1. Refresh Token이 존재한다면 검증 + 재발급 요청 */
+		/** 5-1-2-1. 재발급 토큰이 존재한다면 유효성 검사 + 재발급 요청 */
 		if(refreshToken != null) {
 			
+			/**
+			 * 5-1-2-1-1. 토큰이 있다면 복호화 진행
+			 * - 일반 재발급 토큰( JWT )이 아니라 재발급 토큰( JWT )을 암호화 한 JWE로 관리하기 때문에
+			 *  > decryptToken( 추출한 재발급 토큰, 인증 토큰유무 _ 인증 토큰인지, 재발급 토큰인지 구분자: true: 인증 토큰 / false: 재발급 토큰 )
+			 * */
 			DecryptDto decryptRefreshToken = decryptToken(refreshToken.getToken(), false);
 			decryptRefreshToken.setToken(refreshToken.getToken());
-			/** #3-1-1. Refresh Token의 검증결과가 유효하다면 재발행 요청 */
+			
+			/** 5-1-2-1-2. 재발급 토큰의 서명이 참이고, 검증결과 재발급 토큰이 유효하다면 재발급 요청 & 재발급된 토큰 검증 */
 			if(decryptRefreshToken.isSign() && validateToken(request, decryptRefreshToken))
 				reissueRequestAndValidateToken(request, response, decryptRefreshToken);
 			
-			/** #3-1-2. Refresh Token의 검증결과가 유효하지 않다면 "유효하지 않은 토큰" 반환 */
+			/** 5-1-2-1-3. 재발급 토큰의 유효성 검사 결과가 유효하지 않다면 "유효하지 않은 토큰" 반환 */
 			else unauthorizedResponse(response, INVALID_REFRESH_TOKEN_MESSAGE);
 			
 		}
 		
-		/** #3-2. Refresh Token이 존재하지 않는다면 "토큰 만료" 반환 */
+		/** 5-1-2-2. Refresh Token이 존재하지 않는다면 "토큰 만료" 반환 */
 		else unauthorizedResponse(response, EXPIRED_TOKEN_MESSAGE);
 		
-	}
+	};
 	
-	/** 재발행 요청, 새로 발급받은 토큰의 검증 */
+	/** 5-1-2-1-2. 재발급 토큰의 서명이 참이고, 검증결과 재발급 토큰이 유효하다면 재발급 요청 & 재발급된 토큰 검증 */
 	private void reissueRequestAndValidateToken(HttpServletRequest request, HttpServletResponse response, DecryptDto dto) throws IOException {
 		
 		RestTemplate template = new RestTemplate();
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_JSON);
+		
+		/**
+		 * 내가 정한 규칙대로 로그인 서버에 토큰 재발급 요청
+		 * - 아래 요청 헤더로 인증토큰 재발급 함
+		 * */
 		headers.set("REISSUE-ID", dto.getId());
 		headers.set("REISSUE-IP", dto.getIp());
 		headers.set("REISSUE-AGENT", dto.getAgent());
 		headers.set("REISSUE-DEVICE", dto.getDevice());
 		HttpEntity<String> entity = new HttpEntity<>("", headers);
 		try {
-			
-			/** #4. 재발행 요청 */
-			ResponseEntity<String> res = template.exchange(
-				REFRESH_SERVER, HttpMethod.GET, entity, String.class
-			);
-			
+
+			/** 인증 토큰 재발급 요청 */
+			ResponseEntity<String> res = template.exchange(REFRESH_SERVER, HttpMethod.GET, entity, String.class);
 			String reissueAuthToken = res.getBody();
-			/** #4-1. 새로 발급받은 토큰이 정상적이라면 */
+			/** 새로 발급받은 토큰이 정상적이라면 */
 			if(!reissueAuthToken.equals("INVALID")) {
 				
+				/**
+				 * 5-1-2-1-2-1. 새로 발급받은 토큰 복호화 진행
+				 * - 암호화 한 JWE로 관리하기 때문에
+				 *  > decryptToken( 추출한 재발급 토큰, 인증 토큰유무 _ 인증 토큰인지, 재발급 토큰인지 구분자: true: 인증 토큰 / false: 재발급 토큰 )
+				 * */
 				DecryptDto decryptReissueAuthToken = decryptToken(reissueAuthToken, true);
+				/** 반환되는 서버에 재발급된 토큰이라고 알려줌 */ 
 				decryptReissueAuthToken.setReissue(true);
 				decryptReissueAuthToken.setToken(reissueAuthToken);
+				
+				/** 5-1-2-1-2-2. 재발급 된 토큰이 유효하다면 성공 반환 */
 				if(validateToken(request, decryptReissueAuthToken))
 					successResponse(response, decryptReissueAuthToken);
+				/** 5-1-2-1-2-3. 아닌 경우 오류 반환 */
 				else unauthorizedResponse(response, INVALID_AUTH_TOKEN_MESSAGE);
 				
 			}
 
-			/** #4-2. 새로 발급받은 토큰이 비정상적이라면 */
+			/** #4-2. 새로 발급받은 토큰이 비정상적이라면 오류 반환 */
 			else unauthorizedResponse(response, INVALID_AUTH_TOKEN_MESSAGE);
 			
 		} catch(HttpClientErrorException e) {
@@ -266,89 +387,11 @@ public class JwtAuthentication extends OncePerRequestFilter {
 		
 		return;
 		
-	}
+	};
 	
-	/** 토큰 복호화 후 필요한 값들을 담아서 return */
-	private DecryptDto decryptToken(String token, boolean isAuth) {
-		
-		DecryptDto res = new DecryptDto();
-		try {
-			
-			/** JWE 복호화 */
-			JWEObject jweObject = JWEObject.parse(token);
-			
-			DirectDecrypter decrypter = new DirectDecrypter((isAuth? JWT_DECRYPT_TOKEN:JWT_DECRYPT_REFRESH_TOKEN).getEncoded());
-			jweObject.decrypt(decrypter);
-			
-			/** 복호화 된 JWE에서 토큰 추출 및 파싱 */
-			SignedJWT signedJWT = jweObject.getPayload().toSignedJWT();
-			
-			/** 서명 검증 */
-			JWSVerifier verifier = new MACVerifier((isAuth? JWT_DECRYPT_SIGN:JWT_DECRYPT_REFRESH_SIGN).getEncoded());
-			/** 서명 검증결과 >>> true = 검증O / false = 검증X */
-			res.setSign(signedJWT.verify(verifier));
-			
-			/** JWT Claims */
-			JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
-			
-			/** 토큰에서 만료일 추출 */
-			res.setExpired(claims.getExpirationTime());
-			/** 토큰에서 사용자 ID 추출 */
-			res.setId(claims.getSubject());
-			/** 토큰에서 로그인을 시도했던 사용자의 IP 추출 */
-			res.setIp(claims.getClaim("ip").toString());
-			/** 토큰에서 로그인을 시도했던 사용자의 Agent 추출 */
-			res.setAgent(claims.getClaim("agent").toString());
-			/** 토큰에서 사용자의 기기 식별번호 추출 ( id::uuid 형식 ) */
-			String jti = claims.getJWTID(); 
-			res.setJti(jti);
-			res.setDevice(jti.split("::")[1]);
-			
-		} catch(ParseException | JOSEException e) {
-			e.printStackTrace();
-			res = new DecryptDto();
-		}
-		
-		return res;
-		
-	}
-	
-	/** 토큰 검증 로직 */
-	private boolean validateToken(HttpServletRequest request, DecryptDto dto) {
-		
-		Date expired = dto.getExpired();
-		String agent = dto.getAgent();
-		/**
-		 * ### 유효한 경우 = 아래 조건을 통과해야 함. ###
-		 * #1. 만료일이 현재시간보다 이후인 경우
-		 * #2. Agent가 같은 경우
-		 * #3. 현재 User-Agent가 모바일인 경우에는 Device 혹은 Ip가 일치해야 함. 
-		 * - 만약 User-Agent가 모바일이 아닌경우에는 Device와 Ip가 일치해야 함.
-		 */
-		String reqAgent = request.getHeader("User-Agent");
-
-//		System.out.println("갑자기 한번씩 풀리는 오류확인을 위한 로그");
-//		System.out.println("검증요청이 들어온 Token ===> " + dto.getToken());
-//		System.out.println("expired ====> " + expired);
-//		System.out.println("new Date ====> " + new Date());
-		/** 시간차 오차범위 Redis와 Server */
-		long diff = (new Date().getTime() - expired.getTime()) / 1000;
-		if(expired.before(new Date())) {
-			
-//			System.out.println("만료됐는디..?");
-//			System.out.println("만려됐는데 오차범위 내로 true return 함");
-			if(diff <= 30)
-				return true;
-			
-			return false;
-			
-		}
-		
-//		System.out.println("여기도오니..?? agent검증... ===> " + reqAgent.equals(agent));
-		return reqAgent.equals(agent);
-		
-	}
-	
+	/**
+	 * 성공 반환
+	 * */
 	private void successResponse(HttpServletResponse response, DecryptDto dto) throws IOException {
 		
 		response.setStatus(HttpServletResponse.SC_OK);
@@ -360,10 +403,16 @@ public class JwtAuthentication extends OncePerRequestFilter {
 		map.put("id", dto.getId());
 		map.put("jti", dto.getJti());
 		map.put("token", dto.getToken());
+		
 		/**
 		 * 사용자의 권한에 Redis 적용해둠.
 		 * 만약 권한에 변경이 있다면 "@CacheEvict" 혹은 RedisTemplate 혹은 커스텀 AOP를 활용해서
-		 * 사용자::authz를 제거해야 함. 
+		 * 사용자::authz를 제거해야 함.
+		 * 
+		 * authz 정보는 아래와 같음
+		 * (1) userGroup<String>: 사용자 그룹
+		 * (2) roleGroups<List>: 권한 그룹 리스트
+		 * (3) roles<List>: 권한 리스트
 		 * */
 		map.put("authz", mainDao.getAuthorization(dto.getId()));
 		
@@ -375,8 +424,11 @@ public class JwtAuthentication extends OncePerRequestFilter {
 		
 		return;
 		
-	}
+	};
 	
+	/**
+	 * 오류 반환
+	 */
 	private void unauthorizedResponse(HttpServletResponse response, String str) throws IOException {
 		
 		/** 유효하지 않은 토큰 결과 반환 */
@@ -388,7 +440,11 @@ public class JwtAuthentication extends OncePerRequestFilter {
 		
 		return;
 		
-	}
+	};
+	
+	
+	
+	
 	
 //	private boolean isMobileAgent(String agent) {
 //		
@@ -425,7 +481,7 @@ public class JwtAuthentication extends OncePerRequestFilter {
 //		/** 모든 키워드가 포함되어 있지 않으면 모바일 기기 또는 SNS 앱 내 브라우저가 아님 */
 //		return false;
 //		
-//	}
+//	};
 //	
 //	/** 클라이언트 실제 IP 주소를 찾기 위한 헤더 목록 */
 //	private static final List<String> HEADERS = Arrays.asList(
@@ -452,7 +508,7 @@ public class JwtAuthentication extends OncePerRequestFilter {
 //				 * 위 절차의 최종값이 Null이라면 외부 서비스로 Ip를 호출 후 검증.
 //				 */
 //				.or(() -> Optional.ofNullable(fetchIp(api)).filter(this::isValid));
-//	}
+//	};
 //	
 //	/**
 //	 * IP 주소가 유효한지 검증.
@@ -461,7 +517,7 @@ public class JwtAuthentication extends OncePerRequestFilter {
 //	 */
 //	private boolean isValid(String ip) {
 //		return ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip);
-//	}
+//	};
 //	
 //	/**
 //	 * 외부 서비스를 통해 공인 IP 주소를 호출.
@@ -493,6 +549,6 @@ public class JwtAuthentication extends OncePerRequestFilter {
 //		
 //		return null;
 //		
-//	}
+//	};
 	
 }
