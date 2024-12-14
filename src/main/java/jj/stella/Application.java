@@ -21,7 +21,7 @@ public class Application extends SpringBootServletInitializer {
 	public static void main(String[] args) throws Exception {
 		
 		Region region = Region.AP_NORTHEAST_2;
-		String secret = System.getenv("PROPS_INTRA");
+		String secret = System.getenv("ST2LLA_PROPS");
 		ProfileCredentialsProvider provider = ProfileCredentialsProvider.builder()
 			.profileName("default")
 			.build();
