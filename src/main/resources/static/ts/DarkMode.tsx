@@ -37,7 +37,7 @@ interface Define {mode:string;};
 const html = document.documentElement;
 const DarkMode = ({ mode }:Define) => {
 
-	const [ isDarkMode, setDarkMode ] = useState(getCookie(`isDark`) === `1`);
+	const [ isDarkMode, setDarkMode ] = useState(getCookie(`theme`) === `dark`);
 	
 	/** 다크모드 Toggle */
 	const onDarkMode = useCallback(():void => {
@@ -47,21 +47,21 @@ const DarkMode = ({ mode }:Define) => {
 		setDarkMode(isDark);
 		/** 설정 Toggle */
 		if(isDark) {
-			html.setAttribute(`is-dark`, `true`);
-			setCookie(domain, `isDark`, `1`, 365);
+			html.setAttribute(`theme`, `dark`);
+			setCookie(domain, `theme`, `dark`, 365);
 		} else {
-			html.removeAttribute(`is-dark`);
-			setCookie(domain, `isDark`, ``, -1);
+			html.removeAttribute(`theme`);
+			setCookie(domain, `theme`, ``, -1);
 		}
 
 	}, [isDarkMode, mode]);
 	
 	/** 페이지 마운트 시 localStorage여부로 최초 1회 다크모드 설정 */
 	useEffect(() => {
-		if(getCookie(`isDark`) === `1`) {
-			html.setAttribute(`is-dark`, `true`);
-			setCookie(COOKIE_DOMAIN[mode], `isDark`, `1`, 365);
-		} else html.removeAttribute(`is-dark`);
+		if(getCookie(`theme`) === `dark`) {
+			html.setAttribute(`theme`, `dark`);
+			setCookie(COOKIE_DOMAIN[mode], `theme`, `dark`, 365);
+		} else html.removeAttribute(`theme`);
 	}, []);
 
 	return (

@@ -1,9 +1,9 @@
-
-import React, { useCallback, useEffect, useRef, useState } from "react";
-
-import DarkMode from "./DarkMode";
-
 const NODE_MODE = process.env.NODE_ENV;
+
+import React, { lazy, useCallback, useEffect, useRef, useState } from "react";
+
+const DarkMode = lazy(() => import("./DarkMode"));
+
 const Main = () => {
 	
 	const ref = useRef<HTMLDivElement>(null);
