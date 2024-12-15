@@ -10,7 +10,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @EnableWebMvc
 public class WebMvcConfig implements WebMvcConfigurer {
 	
-	private static final String UPLOAD_PATH = "/home/centos/upload/";
+	private static final String UPLOAD_PATH = "/home/st2lla/upload/";
 	
 	@Override
 	public void addResourceHandlers(ResourceHandlerRegistry registry) {
