@@ -78,7 +78,7 @@ public class SecurityConfig {
 			.cors(cors -> corsConfigurationSource())
 			.csrf(csrf ->
 				csrf
-					// XSRF-TOKEN 발급 ( 쿠키저장 )	
+					// XSRF-TOKEN 발급 ( 쿠키저장 )
 					.csrfTokenRepository(new CsrfRepository(CSRF_NAME, CSRF_PARAMETER, CSRF_HEADER))
 					.csrfTokenRequestHandler(new CsrfHandler(CSRF_PARAMETER))
 			)
