@@ -37,7 +37,7 @@ import jj.stella.entity.dto.ReissueDto;
 import jj.stella.entity.vo.RefreshTokenVo;
 import jj.stella.repository.dao.MainDao;
 
-public class JwtAuthentication extends OncePerRequestFilter {
+public class JwtValidate extends OncePerRequestFilter {
 	
 	private static final String VALIDATE_URL = "/validate";
 	private static final String JTI_URL = "/jti";
@@ -58,7 +58,7 @@ public class JwtAuthentication extends OncePerRequestFilter {
 	private MainDao mainDao;
 	private RedisTemplate<String, String> redisTemplate;
 	private final AntPathMatcher pathMatcher = new AntPathMatcher();
-	public JwtAuthentication(
+	public JwtValidate(
 		String JWT_HEADER, String JWT_KEY,
 		Key JWT_DECRYPT_SIGN, Key JWT_DECRYPT_TOKEN,
 		Key JWT_DECRYPT_REFRESH_SIGN, Key JWT_DECRYPT_REFRESH_TOKEN,

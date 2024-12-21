@@ -24,7 +24,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import jj.stella.filter.auth.JwtAuthentication;
+import jj.stella.filter.auth.JwtValidate;
 import jj.stella.filter.csrf.CsrfHandler;
 import jj.stella.filter.csrf.CsrfRepository;
 import jj.stella.properties.AuthProperties;
@@ -94,7 +94,7 @@ public class SecurityConfig {
 					.requestMatchers(getRequestMatchers(WHITE_LIST)).permitAll()
 					.anyRequest().authenticated()
 			)
-			.addFilterBefore(new JwtAuthentication(
+			.addFilterBefore(new JwtValidate(
 				JWT_HEADER, JWT_KEY,
 				decryptSignKey(JWT_DECRYPT_SIGN), decryptTokenKey(JWT_DECRYPT_TOKEN),
 				decryptTokenKey(JWT_DECRYPT_REFRESH_SIGN), decryptTokenKey(JWT_DECRYPT_REFRESH_TOKEN),
@@ -122,7 +122,6 @@ public class SecurityConfig {
 		corsConfig.setAllowCredentials(true);
 		corsConfig.setMaxAge(3600L);
 		corsConfig.setAllowedMethods(Arrays.asList("GET"));
-		
 		corsConfig.setAllowedHeaders(
 			Arrays.asList(
 				"Content-Type",
